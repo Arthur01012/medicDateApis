@@ -1,0 +1,3 @@
+$kind: collection
+name: Citas
+description: Endpoints para consulta de catálogo, disponibilidad, reserva y gestión de citas del paciente.

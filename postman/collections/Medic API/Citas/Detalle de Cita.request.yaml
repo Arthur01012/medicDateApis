@@ -1,0 +1,12 @@
+$kind: http-request
+name: 'Detalle de Cita'
+order: 5000
+method: GET
+url: '{{base_url}}/detalle_cita.php?id_cita=1&id_usuario=1'
+queryParams:
+  - key: id_cita
+    value: '1'
+    description: 'ID de la cita a consultar'
+  - key: id_usuario
+    value: '1'
+    description: 'ID del usuario autenticado (valida que la cita le pertenezca)'

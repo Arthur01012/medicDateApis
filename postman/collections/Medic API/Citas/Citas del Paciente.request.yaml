@@ -1,0 +1,9 @@
+$kind: http-request
+name: 'Citas del Paciente'
+order: 4000
+method: GET
+url: '{{base_url}}/citas_paciente.php?id_usuario=1'
+queryParams:
+  - key: id_usuario
+    value: '1'
+    description: 'ID del usuario autenticado (obtenido en el login)'

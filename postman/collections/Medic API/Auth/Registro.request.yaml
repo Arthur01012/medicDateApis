@@ -1,0 +1,29 @@
+$kind: http-request
+name: Registro
+order: 2000
+method: POST
+url: '{{base_url}}/registro.php'
+headers:
+  - key: Content-Type
+    value: application/x-www-form-urlencoded
+body:
+  type: urlencoded
+  content:
+    - key: nombres
+      value: Juan
+      description: 'Nombre(s) del paciente (obligatorio)'
+    - key: apellidoPaterno
+      value: Pérez
+      description: 'Apellido paterno (obligatorio)'
+    - key: apellidoMaterno
+      value: García
+      description: 'Apellido materno (opcional)'
+    - key: correo
+      value: paciente@ejemplo.com
+      description: 'Correo electrónico (obligatorio, único)'
+    - key: telefono
+      value: '5512345678'
+      description: 'Teléfono principal (obligatorio)'
+    - key: clave
+      value: contraseña123
+      description: 'Contraseña, mínimo 8 caracteres (obligatorio)'
