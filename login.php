@@ -20,7 +20,7 @@ if (empty($correo) || empty($clave)) {
 }
 
 try {
-    // Buscamos el usuario por correo (solo cuentas con rol paciente)
+    // Buscamos el usuario por correo solo cuentas con rol paciente
     $stmt = $pdo->prepare("SELECT u.id_usuario, u.password_hash, u.estado
                         FROM usuario u
                         INNER JOIN usuario_rol ur ON ur.id_usuario = u.id_usuario
@@ -29,7 +29,7 @@ try {
     $stmt->execute([$correo]);
     $usuario = $stmt->fetch();
 
-    // La contraseña esta guardada con hash, por eso se compara con password_verify
+    // La contraseña esta guardada con hash se compara con password_verify
     if (!$usuario || !password_verify($clave, $usuario['password_hash'])) {
         echo json_encode([
             "exito" => false,
@@ -38,7 +38,6 @@ try {
         exit;
     }
 
-    // Las cuentas no se eliminan, solo se desactivan
     if ($usuario['estado'] !== 'activa') {
         echo json_encode([
             "exito" => false,
@@ -47,7 +46,6 @@ try {
         exit;
     }
 
-    // Guardamos la fecha del ultimo acceso
     $stmt = $pdo->prepare("UPDATE usuario SET ultimo_acceso = NOW() WHERE id_usuario = ?");
     $stmt->execute([$usuario['id_usuario']]);
 
