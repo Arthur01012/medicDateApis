@@ -1,0 +1,5 @@
+$kind: http-request
+name: 'Catálogo de Médicos y Tipos de Atención'
+order: 1000
+method: GET
+url: '{{base_url}}/catalogo_citas.php'

@@ -1,0 +1,7 @@
+$kind: collection
+description: |-
+  API REST para la aplicación móvil del centro médico (Android / Retrofit).
+  Cubre autenticación de pacientes, catálogo de médicos y tipos de atención,
+  consulta de disponibilidad y gestión de citas.
+variables:
+  base_url: http://localhost/medic

@@ -1,0 +1,15 @@
+$kind: http-request
+name: Login
+order: 1000
+method: POST
+url: '{{base_url}}/login.php'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "correo": "paciente@ejemplo.com",
+      "clave": "contraseña123"
+    }

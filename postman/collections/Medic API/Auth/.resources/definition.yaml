@@ -1,0 +1,3 @@
+$kind: collection
+name: Auth
+description: Endpoints de autenticación para pacientes (login y registro de cuenta).
