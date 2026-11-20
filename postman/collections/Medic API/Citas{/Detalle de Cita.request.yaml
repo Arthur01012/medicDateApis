@@ -2,11 +2,34 @@ $kind: http-request
 name: 'Detalle de Cita'
 order: 5000
 method: GET
-url: '{{base_url}}/detalle_cita.php?id_cita=1&id_usuario=1'
+url: '{{base_url}}/detalle_cita.php?id_cita=1&id_usuario=3'
 queryParams:
   - key: id_cita
     value: '1'
     description: 'ID de la cita a consultar'
   - key: id_usuario
-    value: '1'
+    value: '3'
     description: 'ID del usuario autenticado (valida que la cita le pertenezca)'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const status = pm.response.code;
+
+      if (status === 200) {
+          const res = pm.response.json();
+          pm.test("Status 200", () => pm.response.to.have.status(200));
+          pm.test("Tiene 'id' numérico", () => pm.expect(res.id).to.be.a("number").and.above(0));
+          pm.test("Tiene 'fecha' string", () => pm.expect(res.fecha).to.be.a("string").and.not.empty);
+          pm.test("Tiene 'hora' string", () => pm.expect(res.hora).to.be.a("string").and.not.empty);
+          pm.test("Tiene 'duracion' numérico", () => pm.expect(res.duracion).to.be.a("number").and.above(0));
+          pm.test("Tiene 'estado' string", () => pm.expect(res.estado).to.be.a("string").and.not.empty);
+          pm.test("Tiene 'tipo_atencion' string", () => pm.expect(res.tipo_atencion).to.be.a("string").and.not.empty);
+          pm.test("Tiene 'medico' string", () => pm.expect(res.medico).to.be.a("string").and.not.empty);
+      } else if (status === 404) {
+          pm.test("Status 404 - Cita no encontrada", () => pm.response.to.have.status(404));
+          const res = pm.response.json();
+          pm.test("Tiene campo 'error'", () => pm.expect(res.error).to.be.a("string").and.not.empty);
+      } else {
+          pm.test("Status inesperado", () => pm.expect(status).to.be.oneOf([200, 404]));
+      }

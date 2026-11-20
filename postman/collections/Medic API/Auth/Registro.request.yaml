@@ -27,3 +27,22 @@ body:
     - key: clave
       value: contraseña123
       description: 'Contraseña, mínimo 8 caracteres (obligatorio)'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const res = pm.response.json();
+
+      pm.test("Status 200", () => pm.response.to.have.status(200));
+      pm.test("Tiene campo 'exito' booleano", () => pm.expect(res.exito).to.be.a("boolean"));
+      pm.test("Tiene campo 'mensaje' string", () => pm.expect(res.mensaje).to.be.a("string").and.not.empty);
+
+      if (res.exito) {
+          pm.test("Registro exitoso: idUsuario es entero positivo", () => {
+              pm.expect(res.idUsuario).to.be.a("number").and.above(0);
+          });
+      } else {
+          pm.test("Registro fallido: mensaje de error presente", () => {
+              pm.expect(res.mensaje).to.be.a("string").and.not.empty;
+          });
+      }

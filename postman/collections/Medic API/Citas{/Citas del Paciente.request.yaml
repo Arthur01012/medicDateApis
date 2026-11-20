@@ -2,8 +2,34 @@ $kind: http-request
 name: 'Citas del Paciente'
 order: 4000
 method: GET
-url: '{{base_url}}/citas_paciente.php?id_usuario=1'
+url: '{{base_url}}/citas_paciente.php?id_usuario=3'
 queryParams:
   - key: id_usuario
-    value: '1'
+    value: '3'
     description: 'ID del usuario autenticado (obtenido en el login)'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      pm.test("Status 200", () => pm.response.to.have.status(200));
+
+      const res = pm.response.json();
+      pm.test("Respuesta es un arreglo", () => pm.expect(res).to.be.an("array"));
+
+      if (res.length > 0) {
+          pm.test("Cada cita tiene 'id' numérico", () => {
+              res.forEach(c => pm.expect(c.id).to.be.a("number").and.above(0));
+          });
+          pm.test("Cada cita tiene 'fecha' string", () => {
+              res.forEach(c => pm.expect(c.fecha).to.be.a("string").and.not.empty);
+          });
+          pm.test("Cada cita tiene 'hora' string", () => {
+              res.forEach(c => pm.expect(c.hora).to.be.a("string").and.not.empty);
+          });
+          pm.test("Cada cita tiene 'estado' string", () => {
+              res.forEach(c => pm.expect(c.estado).to.be.a("string").and.not.empty);
+          });
+          pm.test("Cada cita tiene 'tipo' válido", () => {
+              res.forEach(c => pm.expect(c.tipo).to.be.oneOf(["proxima", "historial"]));
+          });
+      }

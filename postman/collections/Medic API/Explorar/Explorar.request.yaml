@@ -1,0 +1,47 @@
+$kind: http-request
+name: Explorar
+order: 1000
+method: GET
+url: '{{base_url}}/explorar.php?idPaciente=3'
+queryParams:
+  - key: idPaciente
+    value: '3'
+    description: 'ID del paciente (opcional). Devuelve datos del paciente y su próxima cita además del catálogo general.'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const res = pm.response.json();
+
+      pm.test("Status 200", () => pm.response.to.have.status(200));
+      pm.test("Tiene campo 'success' booleano", () => pm.expect(res.success).to.be.a("boolean"));
+      pm.test("success es true", () => pm.expect(res.success).to.be.true);
+      pm.test("especialidades es un arreglo", () => pm.expect(res.especialidades).to.be.an("array"));
+      pm.test("medicos es un arreglo", () => pm.expect(res.medicos).to.be.an("array"));
+
+      if (res.especialidades.length > 0) {
+          pm.test("Cada especialidad tiene id_especialidad numérico", () => {
+              res.especialidades.forEach(e => pm.expect(e.id_especialidad).to.be.a("number").and.above(0));
+          });
+          pm.test("Cada especialidad tiene nombre string", () => {
+              res.especialidades.forEach(e => pm.expect(e.nombre).to.be.a("string").and.not.empty);
+          });
+      }
+
+      if (res.medicos.length > 0) {
+          pm.test("Cada médico tiene id_empleado numérico", () => {
+              res.medicos.forEach(m => pm.expect(m.id_empleado).to.be.a("number").and.above(0));
+          });
+          pm.test("Cada médico tiene nombre string", () => {
+              res.medicos.forEach(m => pm.expect(m.nombre).to.be.a("string").and.not.empty);
+          });
+      }
+
+      if (res.paciente !== null && res.paciente !== undefined) {
+          pm.test("paciente tiene id_paciente numérico", () => {
+              pm.expect(res.paciente.id_paciente).to.be.a("number").and.above(0);
+          });
+          pm.test("paciente tiene nombre string", () => {
+              pm.expect(res.paciente.nombre).to.be.a("string").and.not.empty;
+          });
+      }

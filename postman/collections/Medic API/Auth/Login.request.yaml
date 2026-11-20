@@ -13,3 +13,23 @@ body:
       "correo": "paciente@ejemplo.com",
       "clave": "contraseña123"
     }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const res = pm.response.json();
+
+      pm.test("Status 200", () => pm.response.to.have.status(200));
+      pm.test("Tiene campo 'exito' booleano", () => pm.expect(res.exito).to.be.a("boolean"));
+      pm.test("Tiene campo 'mensaje' string", () => pm.expect(res.mensaje).to.be.a("string").and.not.empty);
+
+      if (res.exito) {
+          pm.test("Login exitoso: idUsuario es entero positivo", () => {
+              pm.expect(res.idUsuario).to.be.a("number").and.above(0);
+          });
+          pm.collectionVariables.set("id_usuario", res.idUsuario);
+      } else {
+          pm.test("Login fallido: mensaje de error presente", () => {
+              pm.expect(res.mensaje).to.be.a("string").and.not.empty;
+          });
+      }

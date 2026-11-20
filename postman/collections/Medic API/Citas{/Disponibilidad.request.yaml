@@ -7,3 +7,26 @@ queryParams:
   - key: datos
     value: '{"id_empleado":null,"id_tipo_atencion":1,"fecha":"2026-11-20"}'
     description: 'Cadena JSON con id_empleado, id_tipo_atencion y fecha (AAAA-MM-DD, posterior a hoy y de lunes a viernes)'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const res = pm.response.json();
+
+      pm.test("Respuesta con status 200", () => pm.response.to.have.status(200));
+      pm.test("Tiene campo 'exito' booleano", () => pm.expect(res.exito).to.be.a("boolean"));
+
+      if (res.exito) {
+          pm.test("slots es un arreglo", () => pm.expect(res.slots).to.be.an("array"));
+          if (res.slots && res.slots.length > 0) {
+              pm.test("Cada slot tiene 'inicio' string", () => {
+                  res.slots.forEach(s => pm.expect(s.inicio).to.be.a("string").and.not.empty);
+              });
+              pm.test("Cada slot tiene 'fin' string", () => {
+                  res.slots.forEach(s => pm.expect(s.fin).to.be.a("string").and.not.empty);
+              });
+          }
+      } else {
+          pm.test("Error tiene campo 'codigo'", () => pm.expect(res.codigo).to.be.a("string").and.not.empty);
+          pm.test("Error tiene campo 'mensaje'", () => pm.expect(res.mensaje).to.be.a("string").and.not.empty);
+      }

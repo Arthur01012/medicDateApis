@@ -10,5 +10,25 @@ body:
   type: json
   content: |-
     {
-      "datos": "{\"id_usuario\":1,\"id_empleado\":null,\"id_tipo_atencion\":1,\"inicio\":\"2026-11-20 09:00\",\"id_consultorio\":null}"
+      "datos": "{\"id_usuario\":3,\"id_empleado\":null,\"id_tipo_atencion\":1,\"inicio\":\"2026-11-20 09:00\",\"id_consultorio\":null}"
     }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const res = pm.response.json();
+
+      pm.test("Tiene campo 'exito' booleano", () => pm.expect(res.exito).to.be.a("boolean"));
+      pm.test("Tiene campo 'mensaje' string", () => pm.expect(res.mensaje).to.be.a("string").and.not.empty);
+
+      if (res.exito) {
+          pm.test("Reserva exitosa: status 200", () => pm.response.to.have.status(200));
+          pm.test("Reserva exitosa: idCita es entero positivo", () => {
+              pm.expect(res.idCita).to.be.a("number").and.above(0);
+          });
+      } else {
+          pm.test("Error esperado: status 4xx", () => {
+              pm.expect(pm.response.code).to.be.within(400, 499);
+          });
+          pm.test("Error tiene campo 'codigo'", () => pm.expect(res.codigo).to.be.a("string").and.not.empty);
+      }

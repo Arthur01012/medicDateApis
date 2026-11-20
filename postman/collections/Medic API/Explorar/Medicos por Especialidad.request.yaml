@@ -1,0 +1,47 @@
+$kind: http-request
+name: 'Médicos por Especialidad'
+order: 2000
+method: GET
+url: '{{base_url}}/medicos_especialidad.php?idEspecialidad=1'
+queryParams:
+  - key: idEspecialidad
+    value: '1'
+    description: 'ID de la especialidad activa a consultar (obligatorio).'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const status = pm.response.code;
+      const res = pm.response.json();
+
+      pm.test("Tiene campo 'success' booleano", () => pm.expect(res.success).to.be.a("boolean"));
+
+      if (status === 200) {
+          pm.test("Status 200", () => pm.response.to.have.status(200));
+          pm.test("success es true", () => pm.expect(res.success).to.be.true);
+          pm.test("especialidad tiene id_especialidad numérico", () => {
+              pm.expect(res.especialidad.id_especialidad).to.be.a("number").and.above(0);
+          });
+          pm.test("especialidad tiene nombre string", () => {
+              pm.expect(res.especialidad.nombre).to.be.a("string").and.not.empty;
+          });
+          pm.test("medicos es un arreglo", () => pm.expect(res.medicos).to.be.an("array"));
+          if (res.medicos.length > 0) {
+              pm.test("Cada médico tiene id_empleado numérico", () => {
+                  res.medicos.forEach(m => pm.expect(m.id_empleado).to.be.a("number").and.above(0));
+              });
+              pm.test("Cada médico tiene nombre string", () => {
+                  res.medicos.forEach(m => pm.expect(m.nombre).to.be.a("string").and.not.empty);
+              });
+          }
+      } else if (status === 404) {
+          pm.test("Status 404 - Especialidad no encontrada", () => pm.response.to.have.status(404));
+          pm.test("success es false", () => pm.expect(res.success).to.be.false);
+          pm.test("Tiene campo 'mensaje' string", () => pm.expect(res.mensaje).to.be.a("string").and.not.empty);
+      } else if (status === 400) {
+          pm.test("Status 400 - idEspecialidad inválido", () => pm.response.to.have.status(400));
+          pm.test("success es false", () => pm.expect(res.success).to.be.false);
+          pm.test("Tiene campo 'mensaje' string", () => pm.expect(res.mensaje).to.be.a("string").and.not.empty);
+      } else {
+          pm.test("Status inesperado", () => pm.expect(status).to.be.oneOf([200, 400, 404]));
+      }

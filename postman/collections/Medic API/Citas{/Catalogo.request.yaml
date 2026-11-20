@@ -3,3 +3,31 @@ name: 'Catálogo de Médicos y Tipos de Atención'
 order: 1000
 method: GET
 url: '{{base_url}}/catalogo_citas.php'
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const res = pm.response.json();
+
+      pm.test("Status 200", () => pm.response.to.have.status(200));
+      pm.test("exito es true", () => pm.expect(res.exito).to.be.true);
+      pm.test("doctores es un arreglo", () => pm.expect(res.doctores).to.be.an("array"));
+      pm.test("tipos_atencion es un arreglo", () => pm.expect(res.tipos_atencion).to.be.an("array"));
+
+      if (res.doctores.length > 0) {
+          pm.test("Cada doctor tiene id_empleado numérico", () => {
+              res.doctores.forEach(d => pm.expect(d.id_empleado).to.be.a("number").and.above(0));
+          });
+          pm.test("Cada doctor tiene campo medico string", () => {
+              res.doctores.forEach(d => pm.expect(d.medico).to.be.a("string").and.not.empty);
+          });
+      }
+
+      if (res.tipos_atencion.length > 0) {
+          pm.test("Cada tipo_atencion tiene id_tipo_atencion numérico", () => {
+              res.tipos_atencion.forEach(t => pm.expect(t.id_tipo_atencion).to.be.a("number").and.above(0));
+          });
+          pm.test("Cada tipo_atencion tiene nombre string", () => {
+              res.tipos_atencion.forEach(t => pm.expect(t.tipo_atencion).to.be.a("string").and.not.empty);
+          });
+      }
