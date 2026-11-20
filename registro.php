@@ -19,7 +19,7 @@ if (empty($nombres) || empty($apellidoPaterno) || empty($correo) || empty($telef
 }
 if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
     echo json_encode(["exito" => false, "mensaje" => "El correo electrónico no es válido"], JSON_UNESCAPED_UNICODE);
-    exit;
+    exit;  
 }
 if (strlen($clave) < 8) {
     echo json_encode(["exito" => false, "mensaje" => "La contraseña debe tener al menos 8 caracteres"], JSON_UNESCAPED_UNICODE);

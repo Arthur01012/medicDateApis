@@ -1,26 +1,9 @@
 <?php
 require_once __DIR__ . "/citas_api.php";
 
-if ($_SERVER["REQUEST_METHOD"] !== "GET") {
-    header("Allow: GET");
-    citasApiResponder(405, [
-        "exito" => false,
-        "codigo" => "METODO_NO_PERMITIDO",
-        "mensaje" => "Para consultar la disponibilidad, envía una solicitud GET."
-    ]);
-}
-
 $idEmpleado = citasApiId($_GET["id_empleado"] ?? null);
 $idTipoAtencion = citasApiId($_GET["id_tipo_atencion"] ?? null);
 $fecha = $_GET["fecha"] ?? null;
-
-if ($idEmpleado === null || $idTipoAtencion === null || !citasApiFechaValida($fecha)) {
-    citasApiResponder(400, [
-        "exito" => false,
-        "codigo" => "FILTROS_INVALIDOS",
-        "mensaje" => "Indica un médico, un tipo de atención y una fecha válida (AAAA-MM-DD)."
-    ]);
-}
 
 if ((int) DateTimeImmutable::createFromFormat("!Y-m-d", $fecha)->format("N") >= 6) {
     citasApiResponder(422, [
@@ -65,13 +48,6 @@ try {
     );
     $consultaServicio->execute([$idEmpleado, $idTipoAtencion]);
     $servicio = $consultaServicio->fetch();
-    if (!$servicio) {
-        citasApiResponder(404, [
-            "exito" => false,
-            "codigo" => "SERVICIO_NO_DISPONIBLE",
-            "mensaje" => "El médico o tipo de atención seleccionado no está disponible. Actualiza la información."
-        ]);
-    }
 
     $diaSemana = (int) DateTimeImmutable::createFromFormat("!Y-m-d", $fecha)->format("N");
     $consultaHorarios = $pdo->prepare(

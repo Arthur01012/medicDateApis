@@ -18,33 +18,6 @@ $fechaHora = citasApiInicioValido($datos["inicio"] ?? null);
 $consultorioIndicado = array_key_exists("id_consultorio", $datos);
 $idConsultorioSolicitado = null;
 
-if ($consultorioIndicado && $datos["id_consultorio"] !== null) {
-    $idConsultorioSolicitado = citasApiId($datos["id_consultorio"]);
-    if ($idConsultorioSolicitado === null) {
-        citasApiResponder(400, [
-            "exito" => false,
-            "codigo" => "CONSULTORIO_INVALIDO",
-            "mensaje" => "El consultorio seleccionado no es válido. Vuelve a elegir un horario."
-        ]);
-    }
-}
-
-if ($idUsuario === null || $idEmpleado === null || $idTipoAtencion === null || $fechaHora === null) {
-    citasApiResponder(400, [
-        "exito" => false,
-        "codigo" => "DATOS_INCOMPLETOS",
-        "mensaje" => "Falta el paciente, el médico, el tipo de atención o una fecha y hora válidas."
-    ]);
-}
-
-if ((int) $fechaHora->format("N") >= 6) {
-    citasApiResponder(422, [
-        "exito" => false,
-        "codigo" => "DIA_SIN_ATENCION",
-        "mensaje" => "No hay citas disponibles los fines de semana. Selecciona un día de lunes a viernes."
-    ]);
-}
-
 $inicio = $fechaHora->format("Y-m-d H:i:s");
 $fecha = $fechaHora->format("Y-m-d");
 $hora = $fechaHora->format("H:i:s");
