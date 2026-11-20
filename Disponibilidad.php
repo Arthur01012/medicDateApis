@@ -6,7 +6,7 @@ $idEmpleado = citasApiId($datos["id_empleado"] ?? null);
 $idTipoAtencion = citasApiId($datos["id_tipo_atencion"] ?? null);
 $fecha = $datos["fecha"] ?? null;
 
-if ($idEmpleado === null || $idTipoAtencion === null || !citasApiFechaValida($fecha)) {
+if ($idTipoAtencion === null || !citasApiFechaValida($fecha)) {
     citasApiResponder(422, [
         "exito" => false,
         "codigo" => "PARAMETROS_INVALIDOS",
@@ -40,12 +40,13 @@ try {
                 CONCAT_WS(' ', p.nombres, p.apellido_paterno, p.apellido_materno) AS medico,
                 e.nombre AS especialidad
          FROM tipo_atencion ta
-         INNER JOIN doctor d ON d.id_empleado = ?
-         INNER JOIN empleado em ON em.id_empleado = d.id_empleado
-         INNER JOIN persona p ON p.id_persona = em.id_persona
+         LEFT JOIN doctor d ON d.id_empleado = ?
+         LEFT JOIN empleado em ON em.id_empleado = d.id_empleado
+         LEFT JOIN persona p ON p.id_persona = em.id_persona
          LEFT JOIN especialidad e ON e.id_especialidad = ta.id_especialidad
-         WHERE ta.id_tipo_atencion = ? AND ta.activo = 1 AND em.estado = 'activo'
-           AND (ta.id_especialidad IS NULL OR (
+         WHERE ta.id_tipo_atencion = ? AND ta.activo = 1
+           AND (? IS NULL OR em.estado = 'activo')
+           AND (? IS NULL OR ta.id_especialidad IS NULL OR (
                 e.activo = 1
                 AND EXISTS (
                     SELECT 1 FROM doctor_especialidad de
@@ -55,7 +56,7 @@ try {
            ))
          LIMIT 1"
     );
-    $consultaServicio->execute([$idEmpleado, $idTipoAtencion]);
+    $consultaServicio->execute([$idEmpleado, $idTipoAtencion, $idEmpleado, $idEmpleado]);
     $servicio = $consultaServicio->fetch();
 
     $diaSemana = (int) DateTimeImmutable::createFromFormat("!Y-m-d", $fecha)->format("N");
@@ -70,8 +71,12 @@ try {
            AND (h.id_consultorio IS NULL OR co.activo = 1)
          ORDER BY h.hora_inicio, h.id_consultorio"
     );
-    $consultaHorarios->execute([$idEmpleado, $diaSemana, $fecha, $fecha]);
-    $horarios = $consultaHorarios->fetchAll();
+    if ($idEmpleado === null) {
+        $horarios = [];
+    } else {
+        $consultaHorarios->execute([$idEmpleado, $diaSemana, $fecha, $fecha]);
+        $horarios = $consultaHorarios->fetchAll();
+    }
 
     $consulta = $pdo->prepare(
         "SELECT
@@ -160,16 +165,19 @@ try {
         }
     }
 
-    usort($slots, function ($a, $b) {
-        if ($a["inicio"] === $b["inicio"]) {
-            return ($a["id_consultorio"] ?? 0) <=> ($b["id_consultorio"] ?? 0);
-        }
-        return strcmp($a["inicio"], $b["inicio"]);
-    });
+    $inicios = array_column($slots, "inicio");
+    $consultorios = [];
+    foreach ($slots as $slot) {
+        $consultorios[] = $slot["id_consultorio"] ?? 0;
+    }
+    array_multisort($inicios, SORT_ASC, $consultorios, SORT_ASC, $slots);
 
-    $disponibles = count(array_filter($slots, function ($slot) {
-        return $slot["disponible"];
-    }));
+    $disponibles = 0;
+    foreach ($slots as $slot) {
+        if ($slot["disponible"]) {
+            $disponibles++;
+        }
+    }
 
     citasApiResponder(200, [
         "exito" => true,

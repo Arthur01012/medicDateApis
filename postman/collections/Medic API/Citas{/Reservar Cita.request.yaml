@@ -10,5 +10,5 @@ body:
   type: json
   content: |-
     {
-      "datos": "{\"id_usuario\":1,\"id_empleado\":1,\"id_tipo_atencion\":1,\"inicio\":\"2026-11-20 09:00\",\"id_consultorio\":1}"
+      "datos": "{\"id_usuario\":1,\"id_empleado\":null,\"id_tipo_atencion\":1,\"inicio\":\"2026-11-20 09:00\",\"id_consultorio\":null}"
     }

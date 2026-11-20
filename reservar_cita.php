@@ -16,7 +16,23 @@ $idEmpleado = citasApiId($datos["id_empleado"] ?? null);
 $idTipoAtencion = citasApiId($datos["id_tipo_atencion"] ?? null);
 $fechaHora = citasApiInicioValido($datos["inicio"] ?? null);
 $consultorioIndicado = array_key_exists("id_consultorio", $datos);
-$idConsultorioSolicitado = null;
+$idConsultorioSolicitado = $consultorioIndicado && $datos["id_consultorio"] !== null
+    ? citasApiId($datos["id_consultorio"])
+    : null;
+
+if (
+    $idUsuario === null
+    || $idTipoAtencion === null
+    || $fechaHora === null
+    || ($datos["id_empleado"] ?? null) !== null && $idEmpleado === null
+    || ($consultorioIndicado && $datos["id_consultorio"] !== null && $idConsultorioSolicitado === null)
+) {
+    citasApiResponder(422, [
+        "exito" => false,
+        "codigo" => "PARAMETROS_INVALIDOS",
+        "mensaje" => "Incluye id_usuario, id_tipo_atencion e inicio válidos dentro de la cadena datos. id_empleado e id_consultorio pueden ser null."
+    ]);
+}
 
 $inicio = $fechaHora->format("Y-m-d H:i:s");
 $fecha = $fechaHora->format("Y-m-d");
@@ -59,7 +75,7 @@ try {
          FOR UPDATE"
     );
     $consultaDoctor->execute([$idEmpleado]);
-    if (!$consultaDoctor->fetch()) {
+    if ($idEmpleado !== null && !$consultaDoctor->fetch()) {
         $pdo->rollBack();
         citasApiResponder(404, [
             "exito" => false,
@@ -75,12 +91,13 @@ try {
                 CONCAT_WS(' ', p.nombres, p.apellido_paterno, p.apellido_materno) AS medico,
                 e.nombre AS especialidad
          FROM tipo_atencion ta
-         INNER JOIN doctor d ON d.id_empleado = ?
-         INNER JOIN empleado em ON em.id_empleado = d.id_empleado
-         INNER JOIN persona p ON p.id_persona = em.id_persona
+         LEFT JOIN doctor d ON d.id_empleado = ?
+         LEFT JOIN empleado em ON em.id_empleado = d.id_empleado
+         LEFT JOIN persona p ON p.id_persona = em.id_persona
          LEFT JOIN especialidad e ON e.id_especialidad = ta.id_especialidad
          WHERE ta.id_tipo_atencion = ? AND ta.activo = 1
-           AND (ta.id_especialidad IS NULL OR (
+           AND (? IS NULL OR em.estado = 'activo')
+           AND (? IS NULL OR ta.id_especialidad IS NULL OR (
                 e.activo = 1
                 AND EXISTS (
                     SELECT 1 FROM doctor_especialidad de
@@ -90,7 +107,7 @@ try {
            ))
          LIMIT 1"
     );
-    $consultaServicio->execute([$idEmpleado, $idTipoAtencion]);
+    $consultaServicio->execute([$idEmpleado, $idTipoAtencion, $idEmpleado, $idEmpleado]);
     $servicio = $consultaServicio->fetch();
     if (!$servicio) {
         $pdo->rollBack();
@@ -125,8 +142,12 @@ try {
          ORDER BY h.id_horario
          FOR UPDATE"
     );
-    $consultaHorarios->execute([$idEmpleado, $diaSemana, $fecha, $fecha]);
-    $horarios = $consultaHorarios->fetchAll();
+    if ($idEmpleado === null) {
+        $horarios = [];
+    } else {
+        $consultaHorarios->execute([$idEmpleado, $diaSemana, $fecha, $fecha]);
+        $horarios = $consultaHorarios->fetchAll();
+    }
 
     $minutoInicio = ((int) substr($hora, 0, 2) * 60) + (int) substr($hora, 3, 2);
     $duracion = (int) $servicio["duracion_minutos"];
@@ -160,7 +181,7 @@ try {
         }
     }
 
-    if (!$horarioElegido) {
+    if (!$horarioElegido && $idEmpleado !== null) {
         $pdo->rollBack();
         citasApiResponder(409, [
             "exito" => false,
@@ -169,7 +190,7 @@ try {
         ]);
     }
 
-    $idConsultorio = $horarioElegido["id_consultorio"] === null
+    $idConsultorio = $horarioElegido === null || $horarioElegido["id_consultorio"] === null
         ? null
         : (int) $horarioElegido["id_consultorio"];
     if ($idConsultorio !== null) {
@@ -234,7 +255,7 @@ try {
     );
     $historial->execute([$idCita, $idUsuario]);
 
-    $consultorioNombre = $horarioElegido["consultorio"];
+    $consultorioNombre = $horarioElegido["consultorio"] ?? null;
     $lugar = $consultorioNombre === null ? "" : " en " . $consultorioNombre;
     $notificacion = $pdo->prepare(
         "INSERT INTO notificacion (
@@ -245,7 +266,8 @@ try {
         $idUsuario,
         $idCita,
         "Cita confirmada",
-        "Tu cita de " . $servicio["tipo_atencion"] . " con " . $servicio["medico"]
+        "Tu cita de " . $servicio["tipo_atencion"]
+            . ($servicio["medico"] ? " con " . $servicio["medico"] : "")
             . " quedó confirmada para " . $fecha . " a las " . substr($hora, 0, 5) . $lugar . "."
     ]);
 

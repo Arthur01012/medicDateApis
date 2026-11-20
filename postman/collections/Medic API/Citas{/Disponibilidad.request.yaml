@@ -2,8 +2,8 @@ $kind: http-request
 name: 'Consultar Disponibilidad'
 order: 2000
 method: GET
-url: '{{base_url}}/Disponibilidad.php?datos=%7B%22id_empleado%22%3A1%2C%22id_tipo_atencion%22%3A1%2C%22fecha%22%3A%222026-11-20%22%7D'
+url: '{{base_url}}/Disponibilidad.php?datos=%7B%22id_empleado%22%3Anull%2C%22id_tipo_atencion%22%3A1%2C%22fecha%22%3A%222026-11-20%22%7D'
 queryParams:
   - key: datos
-    value: '{"id_empleado":1,"id_tipo_atencion":1,"fecha":"2026-11-20"}'
+    value: '{"id_empleado":null,"id_tipo_atencion":1,"fecha":"2026-11-20"}'
     description: 'Cadena JSON con id_empleado, id_tipo_atencion y fecha (AAAA-MM-DD, posterior a hoy y de lunes a viernes)'
