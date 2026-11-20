@@ -1,9 +1,18 @@
 <?php
 require_once __DIR__ . "/citas_api.php";
 
-$idEmpleado = citasApiId($_GET["id_empleado"] ?? null);
-$idTipoAtencion = citasApiId($_GET["id_tipo_atencion"] ?? null);
-$fecha = $_GET["fecha"] ?? null;
+$datos = citasApiLeerDatosQuery();
+$idEmpleado = citasApiId($datos["id_empleado"] ?? null);
+$idTipoAtencion = citasApiId($datos["id_tipo_atencion"] ?? null);
+$fecha = $datos["fecha"] ?? null;
+
+if ($idEmpleado === null || $idTipoAtencion === null || !citasApiFechaValida($fecha)) {
+    citasApiResponder(422, [
+        "exito" => false,
+        "codigo" => "PARAMETROS_INVALIDOS",
+        "mensaje" => "Incluye id_empleado, id_tipo_atencion y una fecha válida (AAAA-MM-DD) dentro de datos."
+    ]);
+}
 
 if ((int) DateTimeImmutable::createFromFormat("!Y-m-d", $fecha)->format("N") >= 6) {
     citasApiResponder(422, [

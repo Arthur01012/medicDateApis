@@ -17,6 +17,19 @@ function citasApiLeerEntrada()
 
     $datos = json_decode($contenido, true);
     if (json_last_error() === JSON_ERROR_NONE && is_array($datos)) {
+        // El cliente envía todos los parámetros dentro de una sola cadena JSON
+        // llamada "datos". Se conserva compatibilidad con objetos JSON directos.
+        if (isset($datos["datos"]) && is_string($datos["datos"])) {
+            $parametros = json_decode($datos["datos"], true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($parametros)) {
+                citasApiResponder(400, [
+                    "exito" => false,
+                    "codigo" => "DATOS_INVALIDOS",
+                    "mensaje" => "El parámetro datos debe contener una cadena JSON válida."
+                ]);
+            }
+            return $parametros;
+        }
         return $datos;
     }
 
@@ -29,6 +42,29 @@ function citasApiLeerEntrada()
         "codigo" => "JSON_INVALIDO",
         "mensaje" => "No se pudo leer la solicitud. Verifica los datos e inténtalo de nuevo."
     ]);
+}
+
+function citasApiLeerDatosQuery()
+{
+    $cadena = $_GET["datos"] ?? null;
+    if (!is_string($cadena) || trim($cadena) === "") {
+        citasApiResponder(400, [
+            "exito" => false,
+            "codigo" => "DATOS_REQUERIDOS",
+            "mensaje" => "Envía los parámetros dentro de la cadena datos."
+        ]);
+    }
+
+    $datos = json_decode($cadena, true);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($datos)) {
+        citasApiResponder(400, [
+            "exito" => false,
+            "codigo" => "DATOS_INVALIDOS",
+            "mensaje" => "El parámetro datos debe contener una cadena JSON válida."
+        ]);
+    }
+
+    return $datos;
 }
 
 function citasApiId($valor)
