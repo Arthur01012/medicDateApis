@@ -5,3 +5,4 @@ description: |-
   consulta de disponibilidad y gestión de citas.
 variables:
   base_url: http://localhost/medic
+  id_usuario: ""

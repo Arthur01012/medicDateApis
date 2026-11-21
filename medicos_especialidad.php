@@ -14,7 +14,7 @@ if ($idEspecialidad <= 0) {
 }
 
 try {
-    // Comprobar que la especialidad exista y esté activa.
+    // Comprobar que la especialidad exista  y esté activa.
     $stmt = $pdo->prepare("
         SELECT id_especialidad, nombre
         FROM especialidad
