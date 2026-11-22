@@ -4,21 +4,14 @@ require_once __DIR__ . "/citas_api.php";
 $datos = citasApiLeerDatosQuery();
 $idEmpleado = citasApiId($datos["id_empleado"] ?? null);
 $idTipoAtencion = citasApiId($datos["id_tipo_atencion"] ?? null);
+$idUsuario = citasApiId($datos["id_usuario"] ?? null);
 $fecha = $datos["fecha"] ?? null;
 
-if ($idTipoAtencion === null || !citasApiFechaValida($fecha)) {
+if (!citasApiFechaValida($fecha)) {
     citasApiResponder(422, [
         "exito" => false,
         "codigo" => "PARAMETROS_INVALIDOS",
-        "mensaje" => "Incluye id_empleado, id_tipo_atencion y una fecha válida (AAAA-MM-DD) dentro de datos."
-    ]);
-}
-
-if ((int) DateTimeImmutable::createFromFormat("!Y-m-d", $fecha)->format("N") >= 6) {
-    citasApiResponder(422, [
-        "exito" => false,
-        "codigo" => "DIA_SIN_ATENCION",
-        "mensaje" => "No hay citas disponibles los fines de semana. Selecciona un día de lunes a viernes."
+        "mensaje" => "Incluye una fecha válida (AAAA-MM-DD) dentro de datos."
     ]);
 }
 
@@ -34,6 +27,30 @@ try {
         ]);
     }
 
+    // Obtener los días de atención activos del médico
+    $diasAtencion = [];
+    if ($idEmpleado !== null) {
+        $stDias = $pdo->prepare(
+            "SELECT DISTINCT dia_semana FROM horario_atencion
+             WHERE id_empleado = ? AND activo = 1 ORDER BY dia_semana"
+        );
+        $stDias->execute([$idEmpleado]);
+        $diasAtencion = array_map("intval", $stDias->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    if ($idTipoAtencion === null && $idEmpleado !== null) {
+        $stTa = $pdo->prepare(
+            "SELECT ta.id_tipo_atencion FROM tipo_atencion ta
+             INNER JOIN doctor_especialidad de ON de.id_especialidad = ta.id_especialidad OR ta.id_especialidad IS NULL
+             WHERE de.id_empleado = ? AND ta.activo = 1 ORDER BY ta.id_tipo_atencion LIMIT 1"
+        );
+        $stTa->execute([$idEmpleado]);
+        $idTipoAtencion = $stTa->fetchColumn() ?: 1;
+    }
+    if ($idTipoAtencion === null) {
+        $idTipoAtencion = 1;
+    }
+
     $consultaServicio = $pdo->prepare(
         "SELECT ta.id_tipo_atencion, ta.nombre AS tipo_atencion,
                 ta.duracion_minutos,
@@ -45,18 +62,9 @@ try {
          LEFT JOIN persona p ON p.id_persona = em.id_persona
          LEFT JOIN especialidad e ON e.id_especialidad = ta.id_especialidad
          WHERE ta.id_tipo_atencion = ? AND ta.activo = 1
-           AND (? IS NULL OR em.estado = 'activo')
-           AND (? IS NULL OR ta.id_especialidad IS NULL OR (
-                e.activo = 1
-                AND EXISTS (
-                    SELECT 1 FROM doctor_especialidad de
-                    WHERE de.id_empleado = d.id_empleado
-                      AND de.id_especialidad = ta.id_especialidad
-                )
-           ))
          LIMIT 1"
     );
-    $consultaServicio->execute([$idEmpleado, $idTipoAtencion, $idEmpleado, $idEmpleado]);
+    $consultaServicio->execute([$idEmpleado, $idTipoAtencion]);
     $servicio = $consultaServicio->fetch();
 
     $diaSemana = (int) DateTimeImmutable::createFromFormat("!Y-m-d", $fecha)->format("N");
@@ -71,6 +79,7 @@ try {
            AND (h.id_consultorio IS NULL OR co.activo = 1)
          ORDER BY h.hora_inicio, h.id_consultorio"
     );
+
     if ($idEmpleado === null) {
         $horarios = [];
     } else {
@@ -78,41 +87,46 @@ try {
         $horarios = $consultaHorarios->fetchAll();
     }
 
-    $consulta = $pdo->prepare(
-        "SELECT
-            EXISTS (
-                SELECT 1 FROM cita c
-                WHERE c.id_empleado = ?
-                  AND c.estado IN ('pendiente', 'confirmada', 'en_progreso')
-                  AND c.inicio < ? AND c.fin > ?
-            ) AS medico_ocupado,
-            EXISTS (
-                SELECT 1 FROM cita c
-                WHERE c.id_consultorio = ?
-                  AND c.estado IN ('pendiente', 'confirmada', 'en_progreso')
-                  AND c.inicio < ? AND c.fin > ?
-            ) AS consultorio_ocupado,
-            EXISTS (
-                SELECT 1 FROM bloqueo_horario b
-                WHERE b.id_empleado = ?
-                  AND b.inicio < ? AND b.fin > ?
-            ) AS medico_bloqueado,
-            EXISTS (
-                SELECT 1 FROM bloqueo_horario b
-                WHERE b.id_consultorio = ?
-                  AND b.inicio < ? AND b.fin > ?
-            ) AS consultorio_bloqueado"
+    $idPaciente = null;
+    if ($idUsuario !== null) {
+        $stPac = $pdo->prepare(
+            "SELECT pa.id_paciente FROM usuario u
+             INNER JOIN paciente pa ON pa.id_persona = u.id_persona
+             WHERE u.id_usuario = ? LIMIT 1"
+        );
+        $stPac->execute([$idUsuario]);
+        $idPaciente = $stPac->fetchColumn() ?: null;
+    }
+
+    // Cargar todas las citas ocupadas de esta fecha en memoria
+    $stCitas = $pdo->prepare(
+        "SELECT id_empleado, id_paciente, id_consultorio,
+                TIME_FORMAT(inicio, '%H:%i:%s') AS hora_inicio,
+                TIME_FORMAT(fin, '%H:%i:%s') AS hora_fin
+         FROM cita
+         WHERE DATE(inicio) = ?
+           AND estado IN ('pendiente', 'confirmada', 'en_progreso')"
     );
+    $stCitas->execute([$fecha]);
+    $citasOcupadas = $stCitas->fetchAll(PDO::FETCH_ASSOC);
+
+    // Cargar bloqueos de horario de esta fecha
+    $stBloqueos = $pdo->prepare(
+        "SELECT id_empleado, id_consultorio,
+                TIME_FORMAT(inicio, '%H:%i:%s') AS hora_inicio,
+                TIME_FORMAT(fin, '%H:%i:%s') AS hora_fin
+         FROM bloqueo_horario
+         WHERE DATE(inicio) <= ? AND DATE(fin) >= ?"
+    );
+    $stBloqueos->execute([$fecha, $fecha]);
+    $bloqueos = $stBloqueos->fetchAll(PDO::FETCH_ASSOC);
 
     $slots = [];
     $vistos = [];
-    $duracion = (int) $servicio["duracion_minutos"];
-    foreach ($horarios as $horario) {
-        $intervalo = (int) $horario["intervalo_minutos"];
-        if ($duracion <= 0 || $intervalo <= 0) {
-            continue;
-        }
+    $duracion = 30;
+    $intervalo = 30;
 
+    foreach ($horarios as $horario) {
         $cursor = new DateTimeImmutable($fecha . " " . $horario["hora_inicio"]);
         $limite = new DateTimeImmutable($fecha . " " . $horario["hora_fin"]);
         while ($cursor < $limite) {
@@ -121,6 +135,8 @@ try {
                 break;
             }
 
+            $horaInicioSlot = $cursor->format("H:i:s");
+            $horaFinSlot = $finSlot->format("H:i:s");
             $inicio = $cursor->format("Y-m-d H:i:s");
             $fin = $finSlot->format("Y-m-d H:i:s");
             $idConsultorio = $horario["id_consultorio"] === null
@@ -129,19 +145,43 @@ try {
             $clave = $inicio . "|" . ($idConsultorio === null ? "null" : $idConsultorio);
 
             if (!isset($vistos[$clave])) {
-                $consulta->execute([
-                    $idEmpleado, $fin, $inicio,
-                    $idConsultorio, $fin, $inicio,
-                    $idEmpleado, $fin, $inicio,
-                    $idConsultorio, $fin, $inicio
-                ]);
-                $resultado = $consulta->fetch();
-                $disponible = !(
-                    $resultado["medico_ocupado"]
-                    || $resultado["consultorio_ocupado"]
-                    || $resultado["medico_bloqueado"]
-                    || $resultado["consultorio_bloqueado"]
-                );
+                $disponible = true;
+
+                // Verificar conflicto con citas registradas
+                foreach ($citasOcupadas as $c) {
+                    $cInicio = $c["hora_inicio"];
+                    $cFin = $c["hora_fin"];
+
+                    $esMismoEmp = ($idEmpleado !== null && (int)$c["id_empleado"] === (int)$idEmpleado);
+                    $esMismoPac = ($idPaciente !== null && (int)$c["id_paciente"] === (int)$idPaciente);
+                    $esMismoCons = ($idConsultorio !== null && $c["id_consultorio"] !== null && (int)$c["id_consultorio"] === (int)$idConsultorio);
+
+                    if ($esMismoEmp || $esMismoPac || $esMismoCons) {
+                        if (strcmp($cInicio, $horaFinSlot) < 0 && strcmp($cFin, $horaInicioSlot) > 0) {
+                            $disponible = false;
+                            break;
+                        }
+                    }
+                }
+
+                // Verificar conflicto con bloqueos de horario
+                if ($disponible) {
+                    foreach ($bloqueos as $b) {
+                        $bInicio = $b["hora_inicio"];
+                        $bFin = $b["hora_fin"];
+
+                        $esMismoEmp = ($idEmpleado !== null && (int)$b["id_empleado"] === (int)$idEmpleado);
+                        $esMismoCons = ($idConsultorio !== null && $b["id_consultorio"] !== null && (int)$b["id_consultorio"] === (int)$idConsultorio);
+
+                        if ($esMismoEmp || $esMismoCons) {
+                            if (strcmp($bInicio, $horaFinSlot) < 0 && strcmp($bFin, $horaInicioSlot) > 0) {
+                                $disponible = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 $slot = [
                     "inicio" => $inicio,
                     "fin" => $fin,
@@ -149,7 +189,7 @@ try {
                     "duracion_minutos" => $duracion,
                     "id_consultorio" => $idConsultorio,
                     "consultorio" => $horario["consultorio"],
-                    "disponible" => $disponible
+                    "disponible" => (bool) $disponible
                 ];
 
                 if (!$disponible) {
@@ -185,10 +225,11 @@ try {
             ? "Selecciona un horario disponible."
             : "No hay horarios disponibles para esta fecha. Elige otro día.",
         "fecha" => $fecha,
-        "medico" => $servicio["medico"],
-        "tipo_atencion" => $servicio["tipo_atencion"],
-        "especialidad" => $servicio["especialidad"],
+        "medico" => $servicio["medico"] ?? "",
+        "tipo_atencion" => $servicio["tipo_atencion"] ?? "",
+        "especialidad" => $servicio["especialidad"] ?? "",
         "duracion_minutos" => $duracion,
+        "dias_atencion" => $diasAtencion,
         "horarios" => $slots
     ]);
 } catch (PDOException $e) {

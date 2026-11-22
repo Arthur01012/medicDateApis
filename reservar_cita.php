@@ -65,7 +65,6 @@ try {
     }
     $idPaciente = (int) $paciente["id_paciente"];
 
-    // Bloquear el registro padre serializa reservas concurrentes para el mismo médico.
     $consultaDoctor = $pdo->prepare(
         "SELECT d.id_empleado
          FROM doctor d
@@ -97,17 +96,9 @@ try {
          LEFT JOIN especialidad e ON e.id_especialidad = ta.id_especialidad
          WHERE ta.id_tipo_atencion = ? AND ta.activo = 1
            AND (? IS NULL OR em.estado = 'activo')
-           AND (? IS NULL OR ta.id_especialidad IS NULL OR (
-                e.activo = 1
-                AND EXISTS (
-                    SELECT 1 FROM doctor_especialidad de
-                    WHERE de.id_empleado = d.id_empleado
-                      AND de.id_especialidad = ta.id_especialidad
-                )
-           ))
          LIMIT 1"
     );
-    $consultaServicio->execute([$idEmpleado, $idTipoAtencion, $idEmpleado, $idEmpleado]);
+    $consultaServicio->execute([$idEmpleado, $idTipoAtencion, $idEmpleado]);
     $servicio = $consultaServicio->fetch();
     if (!$servicio) {
         $pdo->rollBack();
@@ -150,7 +141,8 @@ try {
     }
 
     $minutoInicio = ((int) substr($hora, 0, 2) * 60) + (int) substr($hora, 3, 2);
-    $duracion = (int) $servicio["duracion_minutos"];
+    // Punto 3: Todas las citas internamente se agendan en intervalos uniformes de 30 minutos
+    $duracion = 30;
     $horarioElegido = null;
     foreach ($horarios as $horario) {
         if ($consultorioIndicado) {
@@ -168,13 +160,11 @@ try {
             + (int) substr($horaInicioHorario, 3, 2);
         $minutoFinHorario = ((int) substr($horaFinHorario, 0, 2) * 60)
             + (int) substr($horaFinHorario, 3, 2);
-        $intervalo = (int) $horario["intervalo_minutos"];
 
         if (
-            $intervalo > 0
-            && $minutoInicio >= $minutoInicioHorario
+            $minutoInicio >= $minutoInicioHorario
             && $minutoInicio + $duracion <= $minutoFinHorario
-            && ($minutoInicio - $minutoInicioHorario) % $intervalo === 0
+            && ($minutoInicio - $minutoInicioHorario) % 30 === 0
         ) {
             $horarioElegido = $horario;
             break;

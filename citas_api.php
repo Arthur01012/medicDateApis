@@ -1,8 +1,15 @@
 <?php
 header("Content-Type: application/json; charset=UTF-8");
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
 
 function citasApiResponder($codigoHttp, $respuesta)
 {
+    header("Content-Type: application/json; charset=UTF-8");
+    header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+    header("Cache-Control: post-check=0, pre-check=0", false);
+    header("Pragma: no-cache");
     http_response_code($codigoHttp);
     echo json_encode($respuesta, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
@@ -17,8 +24,6 @@ function citasApiLeerEntrada()
 
     $datos = json_decode($contenido, true);
     if (json_last_error() === JSON_ERROR_NONE && is_array($datos)) {
-        // El cliente envía todos los parámetros dentro de una sola cadena JSON
-        // llamada "datos". Se conserva compatibilidad con objetos JSON directos.
         if (isset($datos["datos"]) && is_string($datos["datos"])) {
             $parametros = json_decode($datos["datos"], true);
             if (json_last_error() !== JSON_ERROR_NONE || !is_array($parametros)) {
