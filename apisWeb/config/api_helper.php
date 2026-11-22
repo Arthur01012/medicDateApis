@@ -12,7 +12,7 @@ function inicializarApiWeb(array $metodosPermitidos = ['GET']): void
     header('Content-Type: application/json; charset=UTF-8');
     header('Access-Control-Allow-Origin: *');
     header('Access-Control-Allow-Methods: ' . implode(', ', $metodos));
-    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Session-Token, Cache-Control, Pragma');
     header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     header('Cache-Control: post-check=0, pre-check=0', false);
     header('Pragma: no-cache');
@@ -127,7 +127,6 @@ function validarUsuarioPorRol(mysqli $conexion, array $rolesPermitidos, array $e
 
     $idUsuario = null;
 
-    // 1. Si llega token, resolver contra sesion_usuario
     if ($token !== null) {
         $hash = hash('sha256', $token);
         $stmt = $conexion->prepare(
@@ -217,7 +216,6 @@ function validarUsuarioPorRol(mysqli $conexion, array $rolesPermitidos, array $e
         ]);
     }
 
-    // Obtener datos del usuario y empleado vinculado en la BD
     $stmt = $conexion->prepare(
         "SELECT
             u.id_usuario,
@@ -254,7 +252,6 @@ function validarUsuarioPorRol(mysqli $conexion, array $rolesPermitidos, array $e
         ]);
     }
 
-    // Obtener roles asignados
     $stmt = $conexion->prepare(
         "SELECT r.nombre
          FROM usuario_rol ur
@@ -299,9 +296,6 @@ function validarUsuarioPorRol(mysqli $conexion, array $rolesPermitidos, array $e
     ];
 }
 
-/**
- * Calcula la edad en años a partir de una fecha YYYY-MM-DD.
- */
 function calcularEdad(?string $fechaNacimiento): ?int
 {
     if (!$fechaNacimiento || !esFechaValida($fechaNacimiento)) {
@@ -316,10 +310,6 @@ function calcularEdad(?string $fechaNacimiento): ?int
     }
 }
 
-/**
- * Devuelve la etiqueta visual del prototipo (Programada, Atendida, Cancelada)
- * a partir del estado normalizado de la BD.
- */
 function etiquetaEstadoCita(string $estado): string
 {
     $e = strtolower(trim($estado));
@@ -335,18 +325,12 @@ function etiquetaEstadoCita(string $estado): string
     return ucfirst($estado);
 }
 
-/**
- * Convierte número de día ISO-8601 (1..7) a abreviatura en español.
- */
 function nombreDiaCorto(int $diaSemana): string
 {
     $dias = [1 => 'Lun', 2 => 'Mar', 3 => 'Mié', 4 => 'Jue', 5 => 'Vie', 6 => 'Sáb', 7 => 'Dom'];
     return $dias[$diaSemana] ?? '';
 }
 
-/**
- * Registra un evento en la tabla auditoria sin interrumpir el flujo principal si falla.
- */
 function registrarAuditoria(
     mysqli $conexion,
     ?int $idUsuario,
