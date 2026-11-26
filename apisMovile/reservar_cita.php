@@ -176,13 +176,18 @@ try {
         citasApiResponder(409, [
             "exito" => false,
             "codigo" => "HORARIO_NO_DISPONIBLE",
-            "mensaje" => "La fecha, hora o consultorio ya no coinciden con un horario vigente. Elige otro horario."
+            "mensaje" => "La fecha, hora o consultorio ya no coinciden con un horario vigente. Elige otro horario.",
+            "accion" => "elegir_otro_horario"
         ]);
     }
 
-    $idConsultorio = $horarioElegido === null || $horarioElegido["id_consultorio"] === null
-        ? null
-        : (int) $horarioElegido["id_consultorio"];
+    if ($horarioElegido === null) {
+        $idConsultorio = $idConsultorioSolicitado;
+    } else {
+        $idConsultorio = $horarioElegido["id_consultorio"] === null
+            ? null
+            : (int) $horarioElegido["id_consultorio"];
+    }
     if ($idConsultorio !== null) {
         $bloquearConsultorio = $pdo->prepare(
             "SELECT id_consultorio
@@ -196,7 +201,8 @@ try {
             citasApiResponder(409, [
                 "exito" => false,
                 "codigo" => "CONSULTORIO_NO_DISPONIBLE",
-                "mensaje" => "El consultorio dejó de estar disponible. Elige otro horario."
+                "mensaje" => "El consultorio dejó de estar disponible. Elige otro horario.",
+                "accion" => "elegir_otro_horario"
             ]);
         }
     }

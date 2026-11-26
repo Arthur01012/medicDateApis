@@ -11,6 +11,8 @@ $apellidoMaterno = isset($_POST['apellidoMaterno']) ? trim($_POST['apellidoMater
 $correo = isset($_POST['correo']) ? trim($_POST['correo']) : '';
 $telefono = isset($_POST['telefono']) ? trim($_POST['telefono']) : '';
 $clave = isset($_POST['clave']) ? trim($_POST['clave']) : '';
+$idPregunta = isset($_POST['idPregunta']) ? intval($_POST['idPregunta']) : 0;
+$respuesta = isset($_POST['respuesta']) ? trim($_POST['respuesta']) : '';
 
 // 1. Validaciones (el apellido materno es opcional)
 if (empty($nombres) || empty($apellidoPaterno) || empty($correo) || empty($telefono) || empty($clave)) {
@@ -19,10 +21,14 @@ if (empty($nombres) || empty($apellidoPaterno) || empty($correo) || empty($telef
 }
 if (!filter_var($correo, FILTER_VALIDATE_EMAIL)) {
     echo json_encode(["exito" => false, "mensaje" => "El correo electrónico no es válido"], JSON_UNESCAPED_UNICODE);
-    exit;  
+    exit;
 }
 if (strlen($clave) < 8) {
     echo json_encode(["exito" => false, "mensaje" => "La contraseña debe tener al menos 8 caracteres"], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+if ($idPregunta <= 0 || empty($respuesta)) {
+    echo json_encode(["exito" => false, "mensaje" => "Elige tu pregunta secreta y escribe tu respuesta"], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -63,12 +69,20 @@ try {
     $stmt = $pdo->prepare("INSERT INTO usuario_rol (id_usuario, id_rol) SELECT ?, id_rol FROM rol WHERE nombre = 'paciente'");
     $stmt->execute([$idUsuario]);
 
-    // 5. Si la persona todavia no es paciente, la registramos
+    // La respuesta secreta tambien se guarda con hash (en minusculas para que "Luna" y "luna" valgan igual)
+    $stmt = $pdo->prepare("INSERT INTO usuario_pregunta_secreta (id_usuario, id_pregunta_secreta, respuesta_hash) VALUES (?, ?, ?)");
+    $stmt->execute([$idUsuario, $idPregunta, password_hash(strtolower($respuesta), PASSWORD_DEFAULT)]);
+
+        // 5. Si la persona todavia no es paciente, la registramos
     $stmt = $pdo->prepare("SELECT id_paciente FROM paciente WHERE id_persona = ?");
     $stmt->execute([$idPersona]);
-    if (!$stmt->fetch()) {
+    $paciente = $stmt->fetch();
+    if ($paciente) {
+        $idPaciente = (int)$paciente['id_paciente'];
+    } else {
         $stmt = $pdo->prepare("INSERT INTO paciente (id_persona) VALUES (?)");
         $stmt->execute([$idPersona]);
+        $idPaciente = (int)$pdo->lastInsertId();
     }
 
     $pdo->commit();
@@ -87,7 +101,7 @@ try {
     http_response_code(500);
     echo json_encode([
         "exito" => false,
-        "mensaje" => "Error al crear la cuenta."
+        "mensaje" => "Error al crear la cuenta: " . $e->getMessage()
     ], JSON_UNESCAPED_UNICODE);
 }
 ?>

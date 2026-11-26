@@ -157,6 +157,26 @@ function citasApiBuscarConflicto(PDO $pdo, $idEmpleado, $idPaciente, $idConsulto
     ]);
     $conflictos = $consulta->fetch();
 
+    if ($conflictos["medico_bloqueado"] || $conflictos["consultorio_bloqueado"]) {
+        $stMotivo = $pdo->prepare(
+            "SELECT motivo
+             FROM bloqueo_horario
+             WHERE (id_empleado = ? OR id_consultorio = ?)
+               AND inicio < ? AND fin > ?
+             ORDER BY id_bloqueo DESC
+             LIMIT 1"
+        );
+        $stMotivo->execute([$idEmpleado, $idConsultorio, $fin, $inicio]);
+        $filaBloqueo = $stMotivo->fetch();
+        $motivo = isset($filaBloqueo["motivo"]) && trim((string) $filaBloqueo["motivo"]) !== ""
+            ? " (" . trim((string) $filaBloqueo["motivo"]) . ")"
+            : "";
+
+        return [
+            "codigo" => "AGENDA_BLOQUEADA",
+            "mensaje" => "Ese horario ya no está disponible. El médico o el consultorio tiene el horario bloqueado" . $motivo . ". Elige otro horario para continuar."
+        ];
+    }
     if ($conflictos["medico_ocupado"]) {
         return [
             "codigo" => "MEDICO_OCUPADO",
@@ -173,12 +193,6 @@ function citasApiBuscarConflicto(PDO $pdo, $idEmpleado, $idPaciente, $idConsulto
         return [
             "codigo" => "CONSULTORIO_OCUPADO",
             "mensaje" => "El consultorio asignado ya está ocupado en ese horario. Elige otro horario para continuar."
-        ];
-    }
-    if ($conflictos["medico_bloqueado"] || $conflictos["consultorio_bloqueado"]) {
-        return [
-            "codigo" => "AGENDA_BLOQUEADA",
-            "mensaje" => "El médico o el consultorio dejó de estar disponible para ese horario. Elige otro horario."
         ];
     }
 

@@ -1,7 +1,12 @@
 <?php
 require_once __DIR__ . "/citas_api.php";
 
-$datos = citasApiLeerDatosQuery();
+$metodo = $_SERVER["REQUEST_METHOD"] ?? "GET";
+if ($metodo === "POST") {
+    $datos = citasApiLeerEntrada();
+} else {
+    $datos = citasApiLeerDatosQuery();
+}
 $idEmpleado = citasApiId($datos["id_empleado"] ?? null);
 $idTipoAtencion = citasApiId($datos["id_tipo_atencion"] ?? null);
 $idUsuario = citasApiId($datos["id_usuario"] ?? null);
@@ -19,23 +24,31 @@ require_once __DIR__ . "/config/conexion.php";
 
 try {
     $hoy = $pdo->query("SELECT CURDATE()")->fetchColumn();
+
+    // Obtener los días de atención activos del médico (ISO-8601: 1=Lunes ... 7=Domingo)
+    $diasAtencion = [];
+    if ($idEmpleado !== null) {
+        $stDias = $pdo->prepare(
+            "SELECT DISTINCT h.dia_semana
+             FROM horario_atencion h
+             LEFT JOIN consultorio co ON co.id_consultorio = h.id_consultorio
+             WHERE h.id_empleado = ?
+               AND h.activo = 1
+               AND (h.vigencia_hasta IS NULL OR h.vigencia_hasta >= CURDATE())
+               AND (h.id_consultorio IS NULL OR co.activo = 1)
+             ORDER BY h.dia_semana"
+        );
+        $stDias->execute([$idEmpleado]);
+        $diasAtencion = array_map("intval", $stDias->fetchAll(PDO::FETCH_COLUMN));
+    }
+
     if ($fecha <= $hoy) {
         citasApiResponder(422, [
             "exito" => false,
             "codigo" => "ANTICIPACION_MINIMA",
-            "mensaje" => "La disponibilidad se consulta para fechas posteriores a hoy. Elige otro día."
+            "mensaje" => "La disponibilidad se consulta para fechas posteriores a hoy. Elige otro día.",
+            "dias_atencion" => $diasAtencion
         ]);
-    }
-
-    // Obtener los días de atención activos del médico
-    $diasAtencion = [];
-    if ($idEmpleado !== null) {
-        $stDias = $pdo->prepare(
-            "SELECT DISTINCT dia_semana FROM horario_atencion
-             WHERE id_empleado = ? AND activo = 1 ORDER BY dia_semana"
-        );
-        $stDias->execute([$idEmpleado]);
-        $diasAtencion = array_map("intval", $stDias->fetchAll(PDO::FETCH_COLUMN));
     }
 
     if ($idTipoAtencion === null && $idEmpleado !== null) {
@@ -98,33 +111,39 @@ try {
         $idPaciente = $stPac->fetchColumn() ?: null;
     }
 
-    // Cargar todas las citas ocupadas de esta fecha en memoria
+    $fechaObj = DateTimeImmutable::createFromFormat("!Y-m-d", $fecha);
+    $inicioDia = $fecha . " 00:00:00";
+    $finDia = $fechaObj->modify("+1 day")->format("Y-m-d") . " 00:00:00";
+
+    // Cargar todas las citas ocupadas que intersectan esta fecha (soporta citas en el día completo)
     $stCitas = $pdo->prepare(
         "SELECT id_empleado, id_paciente, id_consultorio,
-                TIME_FORMAT(inicio, '%H:%i:%s') AS hora_inicio,
-                TIME_FORMAT(fin, '%H:%i:%s') AS hora_fin
+                DATE_FORMAT(inicio, '%Y-%m-%d %H:%i:%s') AS inicio,
+                DATE_FORMAT(fin, '%Y-%m-%d %H:%i:%s') AS fin
          FROM cita
-         WHERE DATE(inicio) = ?
+         WHERE inicio < ? AND fin > ?
            AND estado IN ('pendiente', 'confirmada', 'en_progreso')"
     );
-    $stCitas->execute([$fecha]);
+    $stCitas->execute([$finDia, $inicioDia]);
     $citasOcupadas = $stCitas->fetchAll(PDO::FETCH_ASSOC);
 
-    // Cargar bloqueos de horario de esta fecha
+    // Cargar bloqueos de horario que intersectan esta fecha (soporta bloqueos parciales, de día completo y multidía)
     $stBloqueos = $pdo->prepare(
         "SELECT id_empleado, id_consultorio,
-                TIME_FORMAT(inicio, '%H:%i:%s') AS hora_inicio,
-                TIME_FORMAT(fin, '%H:%i:%s') AS hora_fin
+                DATE_FORMAT(inicio, '%Y-%m-%d %H:%i:%s') AS inicio,
+                DATE_FORMAT(fin, '%Y-%m-%d %H:%i:%s') AS fin,
+                motivo
          FROM bloqueo_horario
-         WHERE DATE(inicio) <= ? AND DATE(fin) >= ?"
+         WHERE inicio < ? AND fin > ?"
     );
-    $stBloqueos->execute([$fecha, $fecha]);
+    $stBloqueos->execute([$finDia, $inicioDia]);
     $bloqueos = $stBloqueos->fetchAll(PDO::FETCH_ASSOC);
 
     $slots = [];
     $vistos = [];
     $duracion = 30;
     $intervalo = 30;
+    $slotsBloqueados = 0;
 
     foreach ($horarios as $horario) {
         $cursor = new DateTimeImmutable($fecha . " " . $horario["hora_inicio"]);
@@ -135,8 +154,6 @@ try {
                 break;
             }
 
-            $horaInicioSlot = $cursor->format("H:i:s");
-            $horaFinSlot = $finSlot->format("H:i:s");
             $inicio = $cursor->format("Y-m-d H:i:s");
             $fin = $finSlot->format("Y-m-d H:i:s");
             $idConsultorio = $horario["id_consultorio"] === null
@@ -146,35 +163,42 @@ try {
 
             if (!isset($vistos[$clave])) {
                 $disponible = true;
+                $bloqueadoPorHorario = false;
+                $motivoBloqueo = null;
 
-                // Verificar conflicto con citas registradas
-                foreach ($citasOcupadas as $c) {
-                    $cInicio = $c["hora_inicio"];
-                    $cFin = $c["hora_fin"];
+                // Verificar conflicto con bloqueos de horario (comparación completa fecha+hora)
+                foreach ($bloqueos as $b) {
+                    $bInicio = $b["inicio"];
+                    $bFin = $b["fin"];
 
-                    $esMismoEmp = ($idEmpleado !== null && (int)$c["id_empleado"] === (int)$idEmpleado);
-                    $esMismoPac = ($idPaciente !== null && (int)$c["id_paciente"] === (int)$idPaciente);
-                    $esMismoCons = ($idConsultorio !== null && $c["id_consultorio"] !== null && (int)$c["id_consultorio"] === (int)$idConsultorio);
+                    $esMismoEmp = ($idEmpleado !== null && (int) $b["id_empleado"] === (int) $idEmpleado);
+                    $esMismoCons = ($idConsultorio !== null && $b["id_consultorio"] !== null && (int) $b["id_consultorio"] === (int) $idConsultorio);
 
-                    if ($esMismoEmp || $esMismoPac || $esMismoCons) {
-                        if (strcmp($cInicio, $horaFinSlot) < 0 && strcmp($cFin, $horaInicioSlot) > 0) {
+                    if ($esMismoEmp || $esMismoCons) {
+                        if (strcmp($bInicio, $fin) < 0 && strcmp($bFin, $inicio) > 0) {
                             $disponible = false;
+                            $bloqueadoPorHorario = true;
+                            $motivoBloqueo = isset($b["motivo"]) && trim((string) $b["motivo"]) !== ""
+                                ? trim((string) $b["motivo"])
+                                : null;
+                            $slotsBloqueados++;
                             break;
                         }
                     }
                 }
 
-                // Verificar conflicto con bloqueos de horario
+                // Verificar conflicto con citas registradas (comparación completa fecha+hora)
                 if ($disponible) {
-                    foreach ($bloqueos as $b) {
-                        $bInicio = $b["hora_inicio"];
-                        $bFin = $b["hora_fin"];
+                    foreach ($citasOcupadas as $c) {
+                        $cInicio = $c["inicio"];
+                        $cFin = $c["fin"];
 
-                        $esMismoEmp = ($idEmpleado !== null && (int)$b["id_empleado"] === (int)$idEmpleado);
-                        $esMismoCons = ($idConsultorio !== null && $b["id_consultorio"] !== null && (int)$b["id_consultorio"] === (int)$idConsultorio);
+                        $esMismoEmp = ($idEmpleado !== null && (int) $c["id_empleado"] === (int) $idEmpleado);
+                        $esMismoPac = ($idPaciente !== null && (int) $c["id_paciente"] === (int) $idPaciente);
+                        $esMismoCons = ($idConsultorio !== null && $c["id_consultorio"] !== null && (int) $c["id_consultorio"] === (int) $idConsultorio);
 
-                        if ($esMismoEmp || $esMismoCons) {
-                            if (strcmp($bInicio, $horaFinSlot) < 0 && strcmp($bFin, $horaInicioSlot) > 0) {
+                        if ($esMismoEmp || $esMismoPac || $esMismoCons) {
+                            if (strcmp($cInicio, $fin) < 0 && strcmp($cFin, $inicio) > 0) {
                                 $disponible = false;
                                 break;
                             }
@@ -189,12 +213,20 @@ try {
                     "duracion_minutos" => $duracion,
                     "id_consultorio" => $idConsultorio,
                     "consultorio" => $horario["consultorio"],
-                    "disponible" => (bool) $disponible
+                    "disponible" => (bool) $disponible,
+                    "bloqueado" => (bool) $bloqueadoPorHorario
                 ];
 
                 if (!$disponible) {
-                    $slot["codigo"] = "HORARIO_OCUPADO";
-                    $slot["mensaje"] = "Este horario ya no está disponible. Elige otro horario.";
+                    if ($bloqueadoPorHorario) {
+                        $slot["codigo"] = "AGENDA_BLOQUEADA";
+                        $slot["mensaje"] = $motivoBloqueo !== null
+                            ? "Horario bloqueado: " . $motivoBloqueo . "."
+                            : "Este horario se encuentra bloqueado. Elige otro horario.";
+                    } else {
+                        $slot["codigo"] = "HORARIO_OCUPADO";
+                        $slot["mensaje"] = "Este horario ya no está disponible. Elige otro horario.";
+                    }
                 }
 
                 $slots[] = $slot;
@@ -219,11 +251,17 @@ try {
         }
     }
 
+    if ($disponibles > 0) {
+        $mensajeDisponibilidad = "Selecciona un horario disponible.";
+    } elseif (count($slots) > 0 && $slotsBloqueados === count($slots)) {
+        $mensajeDisponibilidad = "El médico tiene el horario bloqueado en esta fecha. Elige otro día.";
+    } else {
+        $mensajeDisponibilidad = "No hay horarios disponibles para esta fecha. Elige otro día.";
+    }
+
     citasApiResponder(200, [
         "exito" => true,
-        "mensaje" => $disponibles > 0
-            ? "Selecciona un horario disponible."
-            : "No hay horarios disponibles para esta fecha. Elige otro día.",
+        "mensaje" => $mensajeDisponibilidad,
         "fecha" => $fecha,
         "medico" => $servicio["medico"] ?? "",
         "tipo_atencion" => $servicio["tipo_atencion"] ?? "",

@@ -197,6 +197,8 @@ try {
             $condiciones[] = "c.estado IN ('pendiente', 'confirmada', 'en_progreso')";
         } elseif ($estadoFiltro === 'atendida') {
             $condiciones[] = "c.estado = 'completada'";
+        } elseif ($estadoFiltro === 'cancelada') {
+            $condiciones[] = "c.estado IN ('cancelada', 'inasistencia')";
         } else {
             $condiciones[] = 'c.estado = ?';
             $tipos .= 's';
